@@ -1,0 +1,554 @@
+import streamlit as st
+from datetime import datetime, timedelta
+import google.generativeai as genai
+import pandas as pd
+import json
+import altair as alt 
+
+
+
+st.set_page_config(page_title="Weather Intelligence Portal", layout="wide")
+st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap');
+        
+        html, body, [class*="css"]  {
+            font-family: 'Prompt', sans-serif !important;
+        }
+        
+        /* ปรับขนาดหัวข้อให้ดูดีขึ้นกับฟอนต์ Prompt */
+        h1, h2, h3 {
+            font-weight: 600 !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.sidebar.header("ตั้งค่า API Key")
+gemini_api_key = st.sidebar.text_input("กรอก Gemini API Key ของท่าน", type="password")
+
+if not gemini_api_key:
+    st.markdown(
+    "<h1 style='text-align:center; font-weight:700;'>FUNDAMENTAL WEATHER FORECAST FOR EACH DISTRICT IN THAILAND </h1>",
+    unsafe_allow_html=True
+)
+    st.warning("กรุณากรอก Gemini API Key ในแถบด้านซ้ายก่อนเริ่มใช้งาน")
+    st.stop()
+
+
+genai.configure(api_key=gemini_api_key)
+WEATHER_MODEL = genai.GenerativeModel("gemini-2.5-flash-lite")
+QNA_MODEL =  genai.GenerativeModel("gemini-2.5-flash-lite")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def sanitize_json_string(text: str):
+    """
+    ล้างข้อความ JSON จากอักขระที่ไม่ถูกต้อง เช่น control characters
+    """
+    import re
+
+    # ลบ control characters (เช่น \x00-\x1F)
+    text = re.sub(r'[\x00-\x1F\x7F]', '', text)
+
+    text = text.replace("\n", "\\n")
+
+    return text
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@st.cache_data(ttl="1h", show_spinner=False)
+# --- 2. 💥 ปรับปรุงฟังก์ชัน API (ขอข้อมูล 6 รายการ) ---
+def summarize_weather( selected_province, selected_district, custom_date):
+
+    date_str = custom_date.strftime('%d-%m-%Y')
+
+    prompt = f"""
+    You MUST respond with ONLY a valid JSON object.
+    JSON MUST NOT contain real line breaks inside strings.
+    Use \\n for new line in any string value.
+
+
+    Analyze the weather of {selected_district} in {selected_province}, Thailand on {date_str}.
+    Provide the output as a valid JSON object only.
+
+    IMPORTANT: If you cannot find any weather data for the district "{selected_district}" (e.g., misspelled, no data or that district is not in that province),
+    you MUST return this JSON error object exactly but you have to know that only in bangkok, won't use "อำเภอ" but use "เขต" instead.:
+    {{
+      "error_message": "ไม่พบข้อมูลของอำเภอ'{selected_district}' กรุณาตรวจสอบจังหวัดที่ท่านเลือกหรือตัวสะกดของอำเภอนั้นอีกครั้ง"
+    }}
+
+    If data IS found, The JSON object must have this exact structure:
+
+    The JSON object must have this exact structure:
+    1. "summary": Output must be one sentence that have this detail: 
+    - อุณหภูมิต่ำสุด-สูงสุดในวันนั้นโดยไม่แบ่งช่วง 
+    - แบ่งช่วงเวลา เช้า/กลางวัน/เย็น 
+    - สภาพท้องฟ้าแต่ละช่วง ถ้าเหมือนกันให้บอกทีเดียวเลย 
+    - ถ้าอำเภอนั้นไม่ติดทะเลให้บอกคุณภาพอากาศตามเกณฑ์ AQI ของประเทศไทย แต่ไม่ต้องบอกความสูงคลื่น
+    - ถ้าอำเภอนั้นมีอาณาเขตติดทะเลให้บอกด้วยว่าคลื่นสูงกี่เมตร (ไม่ต้องบอกว่าเพราะติดทะเล) แต่ไม่ต้องคุณภาพอากาศ
+    สุดท้ายนี้ ทำให้ประโยคดูเป็นภาษาไทยมากที่สุด แต่ละช่วงถ้าเหมือนก็นำมาเชื่อมกันก็ได้ อย่าใช้คอมม่าเชื่อม ทำให้สละสลวย ใช้คำฟุ่มเฟือยให้พอเหมาะ
+
+    // Item 2.1 (Temp)
+    2. "temp_max": (integer)
+    3. "temp_min": (integer)
+    4. "hourly_temp": An array of 24 integers (hourly temperature).(โดยปกติอุณหภุมอสูงสุดมักอยู่เที่ยงถึงบ่ายสาม และต่ำสุดมักอยู่ช่วง 6 ถึง 7 โมง ไม่ใช่ช่วงเที่ยงคืน)
+    
+    // Item 2.2 (Rain)
+    5. "rain_chance_avg": (integer, 0-100, Average for the day)
+    6. "hourly_rain_chance": An array of 24 integers (0-100).
+    
+    // Item 2.3 (Hourly Sky)
+    7. "hourly_sky_conditions": An array of 24 strings. Must use only these 4 values: "มีฝน", "เมฆมาก", "เมฆปนแดด", "ท้องฟ้าแจ่มใส".
+    8. "sky_summary_text": Short Thai text summary of sky ทำให้ประโยคดูเป็นภาษาไทยมากที่สุด ไม่ต้องวิเคราะห์ช่วงบ่ายแก่ๆ ข้ามจากช่วงบ่ายไปช่วงเย็นเลย ละก้แต่ละช่วงถ้าเหมือนก็นำมาเชื่อมกันก็ได้ อย่าใช้คอมม่าเชื่อม ทำให้สละสลวย ใช้คำฟุ่มเฟือยให้พอเหมาะ 
+    
+    // Item 2.4 (Wind)
+    9. "wind_speed_avg": Average wind speed in km/h (integer).
+    10. "wind_direction_avg": Average wind direction (e.g., "NE", "SW").
+    11. "hourly_wind_speed": An array of 24 integers (wind speed in km/h).
+    12. "hourly_wind_direction": An array of 24 strings (wind direction e.g., "N", "NE", "SW").
+    
+    // Item 2.5 (PM2.5 / AQI)
+    13. "aqi_level_avg": (Overall Thai T-AQI level for the day).
+    14. "hourly_aqi_level": An array of 24 strings (Thai T-AQI level).
+    15. "hourly_aqi_color": An array of 24 strings (T-AQI color name in English).
+    
+    // Item 2.6 (UV)
+    16. "uv_index": (integer, Max UV)
+    17. "uv_description": (Thai description).
+    18. "hourly_uv_index": An array of 24 integers (hourly UV index).
+
+    // Item 2.7 (Humidity)
+    18. "humidity_avg": (integer, 0-100)
+    19. "hourly_humidity": An array of 24 integers (0-100).
+    
+    Example (Do not use this exact data, find new data):
+    {{
+      "summary": "อุณหภูมิ 26-34°C, ท้องฟ้าแจ่มใส, คุณภาพอากาศดีมาก, คลื่นสูง 1 เมตร",
+      "temp_max": 34,
+      "temp_min": 26,
+      "hourly_temp": [24 numbers],
+      "rain_chance_avg": 40,
+      "hourly_rain_chance": [24numbers],
+      "hourly_sky_conditions": ["ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "เมฆปนแดด", "เมฆปนแดด", "เมฆปนแดด", "เมฆมาก", "เมฆมาก", "เมฆมาก", "มีฝน", "มีฝน", "เมฆมาก", "เมฆปนแดด", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส"],
+      "sky_summary_text": "06:00–09:00 → ท้องฟ้าแจ่มใส\n09:00–12:00 → เมฆปนแดด\n12:00–15:00 → เมฆมาก\n15:00–18:00 → มีฝน",
+      "wind_speed_avg": 10,
+      "wind_direction_avg": "NE",
+      "hourly_wind_speed": [24 numbers],
+      "hourly_wind_direction": ["N", "N", "NNE", "NE", "NE", "NE", "ENE", "E", "E", "E", "ESE", "SE", "SE", "S", "S", "SW", "W", "W", "NW", "NW", "N", "N", "N", "N"],
+      "aqi_level_avg": "ปานกลาง",
+      "hourly_aqi_level": ["ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี"],
+      "hourly_aqi_color": ["green", "green", "green", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "green", "green", "green", "green", "green", "green", "green", "green", "green"],
+      "uv_index": 9,
+      "uv_description": "สูงมาก",
+      "hourly_uv_index": [24 numbers] แต่ละชั่วโมงไม่ควรโดดไปโดดมา เพราะค่า UV จะสูงตอนเที่ยงๆ ละจะลดลงตามความเข็มแสงอาทิตย์
+      "humidity_avg": 75,
+      "hourly_humidity": [24 numbers]
+    }}
+    """
+
+    try:
+        response = WEATHER_MODEL.generate_content(prompt)
+
+        raw = response.text if hasattr(response, "text") else response.candidates[0].content.parts[0].text
+
+        # 🔧 sanitize
+        raw = sanitize_json_string(raw)
+
+        # ตัดส่วน { ... }
+        json_start = raw.find('{')
+        json_end = raw.rfind('}')
+
+        if json_start == -1 or json_end == -1:
+            raise Exception("JSON not found")
+
+        json_str = raw[json_start:json_end + 1]
+
+        # แปลง JSON
+        data = json.loads(json_str)
+
+        return data
+
+    except Exception as e:
+        st.error(f"**ข้อผิดพลาดในการประมวลผลข้อมูล:** รหัส API ของคุณไม่ถูกต้อง")
+        if 'raw' in locals(): # ตรวจสอบว่า raw ถูกกำหนดค่าไว้หรือไม่
+            st.code(raw) 
+        st.code(f"รายละเอียดข้อผิดพลาด: {e}")
+        return None
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def general_qna_interface():
+    st.header("Open-Query Weather Analysis")
+    st.write("""โปรดทราบว่าข้อมูลการพยากรณ์อากาศอาจมีการเปลี่ยนแปลงตามสภาวะธรรมชาติ 
+    ดังนั้นการพยากรณ์ระยะยาวอาจมีความแม่นยำน้อยกว่า ข้อมูลที่แสดงผลเป็นการพยากรณ์ในเบื้องต้นเท่านั้น""")
+    st.write("**ระบบจะแสดงคำตอบเฉพาะคำถามที่เกี่ยวข้องกับสภาพอากาศเท่านั้น**")
+
+    system_instruction = (
+        "คุณคือผู้พยากรณ์อากาศมืออาชีพ กรุณาตอบคำถามของผู้ใช้โดยยึดหลักความกระชับ ตรงประเด็น "
+        "หลีกเลี่ยงการใช้คำฟุ่มเฟือยหรือคำที่เกินความจำเป็น และจัดรูปแบบคำตอบให้อยู่ในรูปของย่อหน้าและตอบเป็นภาษาไทย"
+        "และห้ามใช้รายการสัญลักษณ์ (Bullet Points) หรือรายการตัวเลข (Numbered Lists) เว้นแต่จำเป็นอย่างยิ่ง"
+        "และที่สำคัญ ถ้าคำถามไม่ใช่เรื่องที่เกี่ยวข้องกับสภาพอากาศ ให้คุณตอบกลับประมาณว่าคำถามต้องต้องถามในเรื่องที่ข้องกับสภาพอากาศเท่านั้น (ตามความเหมาะสม)"
+        "แต่ถ้าคำถามยังอยู่ในบริบทที่เกี่ยวข้องอยู่ห่าง ๆ ก็ตอบได้เช่นกัน เช่น พรุ่งนี้ควรแต่งกายยังไง ควรไปออกกำลังกายดีไหม"
+    )
+
+    # 💾 เก็บประวัติการสนทนาใน session state
+    if "messages" not in st.session_state:
+        # กำหนด role เป็น 'assistant' สำหรับคำตอบ เพื่อให้สอดคล้องกับการใช้งานทั่วไป
+        st.session_state.messages = [] 
+    
+    # 📝 แสดงประวัติการสนทนา
+    for message in st.session_state.messages:
+        # ใช้ 'assistant' สำหรับการแสดงผลโมเดล แทน 'profestional weather forecaster'
+        display_role = "assistant" if message["role"] == "profestional weather forecaster" else message["role"]
+        with st.chat_message(display_role):
+            st.markdown(message["content"])
+
+    # 💬 กล่องป้อนข้อมูล
+    if prompt := st.chat_input("ป้อนคำถามที่เกี่ยวข้องกับสภาพอากาศที่นี่..."):
+        # แสดงคำถามของผู้ใช้
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # 🎯 สร้าง Prompt สุดท้ายโดยรวมคำสั่งควบคุม
+        full_prompt_to_model = f"{system_instruction}\n\nคำถาม: {prompt}"
+
+        # 🚀 เรียกใช้โมเดล
+        with st.chat_message("assistant"): # ใช้ role 'assistant' สำหรับกล่องข้อความ
+            with st.spinner("Gemini กำลังประมวลผลคำตอบ..."):
+                try:
+                    # ใช้ full_prompt_to_model
+                    response = QNA_MODEL.generate_content(full_prompt_to_model) 
+                    answer = response.text
+                    st.markdown(answer)
+                    
+                    # 💾 เก็บคำตอบของโมเดล (ใช้ role ภายในที่กำหนดเองเพื่อระบุแหล่งที่มา)
+                    st.session_state.messages.append({"role": "profestional weather forecaster", "content": answer})
+                except Exception as e:
+                    st.error(f"เกิดข้อผิดพลาดในการเรียก API: {e}")
+                    # ใช้ role ภายในที่กำหนดเอง
+                    st.session_state.messages.append({"role": "profestional weather forecaster", "content": f"ขออภัยค่ะ เกิดข้อผิดพลาดในการประมวลผล: {e}"})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def weather_forecast_interface():
+    st.header("Structured Forecast Metrics")
+    
+    # 🔘 ปุ่มเลือกแหล่งข้อมูล (เพิ่มใหม่เพื่อให้รองรับการ Upload)
+    data_source = st.radio(
+        "เลือกวิธีการพยากรณ์:",
+        ["AI พยากรณ์", "พยากรณ์ผ่านไฟล์ CSV/Excel ของท่าน"],
+        horizontal=True
+    )
+
+    # ตัวแปรสำหรับเก็บ DataFrame และข้อมูลสรุป เพื่อนำไปพล็อตทีเดียว
+    weather_df = None
+    summary_text = None
+    
+    # ---------------------------------------------------------
+    # กรณีที่ 1: ให้ AI พยากรณ์ (Logic เดิม)
+    # ---------------------------------------------------------
+    if data_source == "AI พยากรณ์":
+        st.write("""เว็บไซต์การพยากรณ์อากาศนี้สามารถพยากรณ์สภาพอากาศล่วงหน้าได้สูงสุด 6 วัน เพื่อความแม่นยำของข้อมูล ข้อมูลที่แสดงผลเป็นข้อมูลของอำเภอที่ท่านได้ทำการเลือก
+        ทางผู้พัฒนาขอสงวนสิทธิ์ในความรับผิดชอบต่อความคลาดเคลื่อนของข้อมูลที่อาจเกิดขึ้น เนื่องจากสภาพอากาศอาจมีการเปลี่ยนแปลงตามสภาวะธรรมชาติ ข้อมูลที่ปรากฏเป็นเพียงการพยากรณ์เบื้องต้นเท่านั้น""")
+        st.subheader("กรอกข้อมูล")
+
+        provinces = [
+            "กรุงเทพมหานคร", "กระบี่", "กาญจนบุรี", "กาฬสินธุ์", "กำแพงเพชร", 
+            "ขอนแก่น", "จันทบุรี", "ฉะเชิงเทรา", "ชลบุรี", "ชัยนาท", "ชัยภูมิ", 
+            "ชุมพร", "เชียงราย", "เชียงใหม่", "ตรัง", "ตราด", "ตาก", "นครนายก", 
+            "นครปฐม", "นครพนม", "นครราชสีมา", "นครศรีธรรมราช", "นครสวรรค์", 
+            "นนทบุรี", "นราธิวาส", "น่าน", "บึงกาฬ", "บุรีรัมย์", "ปทุมธานี", 
+            "ประจวบคีรีขันธ์", "ปราจีนบุรี", "ปัตตานี", "พระนครศรีอยุธยา", 
+            "พะเยา", "พังงา", "พัทลุง", "พิจิตร", "พิษณุโลก", "เพชรบุรี", 
+            "เพชรบูรณ์", "แพร่", "ภูเก็ต", "มหาสารคาม", "มุกดาหาร", "แม่ฮ่องสอน", 
+            "ยโสธร", "ยะลา", "ร้อยเอ็ด", "ระนอง", "ระยอง", "ราชบุรี", "ลพบุรี", 
+            "ลำปาง", "ลำพูน", "เลย", "ศรีสะเกษ", "สกลนคร", "สงขลา", "สตูล", 
+            "สมุทรปราการ", "สมุทรสงคราม", "สมุทรสาคร", "สระแก้ว", "สระบุรี", 
+            "สิงห์บุรี", "สุโขทัย", "สุพรรณบุรี", "สุราษฎร์ธานี", "สุรินทร์", 
+            "หนองคาย", "หนองบัวลำภู", "อ่างทอง", "อำนาจเจริญ", "อุดรธานี", 
+            "อุตรดิตถ์", "อุทัยธานี", "อุบลราชธานี", "อ่างทอง"
+        ]
+
+        min_date = datetime.now()
+        max_date = (datetime.now() + timedelta(days=7)).date()
+
+        with st.form(key="required_info"):
+            selected_province = st.selectbox("ระบุจังหวัด:", provinces, key="province_select")
+            selected_district = st.text_input("ระบุอำเภอ/เขต:", key="district_input")
+
+            day_options = ["วันนี้", "พรุ่งนี้", "อีก 2 วัน", "อีก 3 วัน", "อีก 4 วัน","อีก 5 วัน","อีก 6 วัน"]
+            selected_day = st.selectbox("เลือกวันพยากรณ์:", day_options, key="day_select")
+
+            submit_button = st.form_submit_button("วิเคราะห์สภาพอากาศ")
+
+        if submit_button:
+            day_index = day_options.index(selected_day)
+            custom_date = datetime.now() + timedelta(days=day_index)
+            
+            if not selected_province or not selected_district:
+                st.warning("⚠️ กรุณาระบุ จังหวัด และ อำเภอ/เขต ให้ครบถ้วน")
+            else:
+                st.success(f"✅ คุณเลือกจังหวัด: {selected_province}  อำเภอ/เขต: {selected_district}")
+                st.info(f"📅 วันที่เลือก: {custom_date.strftime('%d-%m-%Y')}")
+
+                
+                with st.spinner("กำลังวิเคราะห์ข้อมูลสภาพอากาศจาก Gemini..."):
+                    weather_data = summarize_weather(selected_province, selected_district, custom_date)
+
+                if weather_data:
+                    if 'error_message' in weather_data:
+                        st.error(weather_data['error_message'])
+                    else:
+                        summary_text = weather_data.get('summary', 'ไม่พบข้อมูลสรุป')
+                        
+                        # 🎯 แปลงข้อมูล JSON เป็น DataFrame เพื่อใช้พล็อตและดาวน์โหลด
+                        try:
+                            weather_df = pd.DataFrame({
+                                'Hour': range(24),
+                                'Temperature': weather_data['hourly_temp'],
+                                'RainChance': weather_data['hourly_rain_chance'],
+                                'WindSpeed': weather_data['hourly_wind_speed'],
+                                'Sky': weather_data['hourly_sky_conditions'],
+                                'AQI': weather_data['hourly_aqi_level'],
+                                'AQI_Color': weather_data['hourly_aqi_color'],
+                                'UV': weather_data['hourly_uv_index'],
+                                'Humidity': weather_data['hourly_humidity']
+                            })
+                            
+                        except Exception as e:
+                            st.error(f"เกิดข้อผิดพลาดในการสร้างตารางข้อมูล: {e}")
+
+    # ---------------------------------------------------------
+    # กรณีที่ 2: อัปโหลดไฟล์ (Upload CSV/Excel)
+    # ---------------------------------------------------------
+    else:
+        st.info("อัปโหลดไฟล์ CSV หรือ Excel ที่มีคอลัมน์: Hour, Temperature, RainChance, WindSpeed, Sky, AQI, AQI_Color, UV, Humidity")
+        uploaded_file = st.file_uploader("เลือกไฟล์ CSV/Excel", type=['csv', 'xlsx'])
+        
+        if uploaded_file:
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    weather_df = pd.read_csv(uploaded_file)
+                else:
+                    weather_df = pd.read_excel(uploaded_file)
+                
+                # ตรวจสอบคอลัมน์พื้นฐาน
+                required_cols = ['Hour', 'Temperature', 'RainChance', 'WindSpeed', 'Sky', 'AQI', 'AQI_Color', 'UV', 'Humidity']
+                if not all(col in weather_df.columns for col in required_cols):
+                    st.error(f"ไฟล์ไม่ถูกต้อง ขาดคอลัมน์: {set(required_cols) - set(weather_df.columns)}")
+                    weather_df = None # ยกเลิกการแสดงผลถ้าไฟล์ผิด
+                else:
+                    summary_text = "ข้อมูลจากการอัปโหลดไฟล์"
+                    st.success("อัปโหลดสำเร็จ")
+                    st.dataframe(weather_df, use_container_width=True, hide_index=True)
+
+            except Exception as e:
+                st.error(f"เกิดข้อผิดพลาดในการอ่านไฟล์: {e}")
+
+    # ---------------------------------------------------------
+    # ส่วนแสดงผลกราฟ (ใช้ code block เดียวกันสำหรับทั้ง AI และ Upload)
+    # ---------------------------------------------------------
+    if weather_df is not None:
+        # 1. แสดงสรุปข้อมูล
+        if summary_text:
+            st.subheader("สรุปข้อมูล")
+            st.write(summary_text)
+
+        # 2. แสดงข้อมูลเชิงลึก (กราฟ)
+        st.subheader("ข้อมูลเชิงลึก")
+        
+        # คำนวณค่าสถิติเบื้องต้นจาก DataFrame
+        temp_max = weather_df['Temperature'].max()
+        temp_min = weather_df['Temperature'].min()
+        rain_avg = int(weather_df['RainChance'].mean())
+        wind_avg = int(weather_df['WindSpeed'].mean())
+        uv_max = weather_df['UV'].max()
+        hum_avg = int(weather_df['Humidity'].mean())
+        aqi_mode = weather_df['AQI'].mode()[0] if not weather_df['AQI'].empty else "N/A"
+        
+        col1, col2 = st.columns(2,gap="large")
+
+        with col1:
+            # 1. อุณหภูมิ
+            with st.container(border=True):
+                st.markdown("##### 🌡️ อุณหภูมิ")
+                c1, c2 = st.columns(2)
+                c2.metric("สูงสุด", f"{temp_max} °C")
+                c1.metric("ต่ำสุด", f"{temp_min} °C")
+                
+                chart = alt.Chart(weather_df).mark_line(point=True, color='red').encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('Temperature:Q', scale=alt.Scale(domain=[temp_min-2, temp_max+2]), title='อุณหภูมิ'),
+                    tooltip=['Hour', 'Temperature']
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+            # 2. ฝน
+            with st.container(border=True):
+                st.markdown("##### 💧 โอกาสเกิดฝน")
+                st.metric("โอกาสเกิดฝน (เฉลี่ย)", f"{rain_avg} %")
+                
+                chart = alt.Chart(weather_df).mark_bar(color='#3498db').encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('RainChance:Q', scale=alt.Scale(domain=[0, 100]), title='โอกาสเกิดฝน %'),
+                    tooltip=['Hour', 'RainChance']
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+            # 3. ลม
+            with st.container(border=True):
+                st.markdown("##### 💨 ลม")
+                st.metric("ความเร็วลมเฉลี่ย", f"{wind_avg} km/h")
+                
+                chart = alt.Chart(weather_df).mark_line(point=True, color='gray').encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('WindSpeed:Q', title='ความเร็วลม (km/h)'),
+                    tooltip=['Hour', 'WindSpeed']
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+        with col2:
+            # 4. ท้องฟ้า
+            with st.container(border=True):
+                st.markdown("##### 📈 ท้องฟ้ารายชั่วโมง")
+                sky_domain = ["ท้องฟ้าแจ่มใส", "เมฆปนแดด", "เมฆมาก", "มีฝน"]
+                sky_range = ["#3498db", "#f1c40f", "#95a5a6", "#2980b9"]
+                
+                chart = alt.Chart(weather_df).mark_line(interpolate='step-after', point=True).encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('Sky:O', sort=sky_domain, title=None),
+                    color=alt.Color('Sky:N', scale=alt.Scale(domain=sky_domain, range=sky_range), legend=None),
+                    tooltip=['Hour', 'Sky']
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+            # 5. AQI
+            with st.container(border=True):
+                st.markdown("##### 🍃 ฝุ่นละอองขนาดเล็ก PM2.5 (AQI)")
+                st.metric("ค่าที่พบบ่อย", aqi_mode)
+                
+                aqi_domain = ["ดีมาก", "ดี", "ปานกลาง", "เริ่มมีผลกระทบ", "มีผลกระทบ"]
+                aqi_range = ["blue", "green", "yellow", "orange", "red"]
+
+                chart = alt.Chart(weather_df).mark_line(interpolate='step-after', point=True).encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('AQI:O', sort=aqi_domain, title=None),
+                    color=alt.Color('AQI:N', scale=alt.Scale(domain=aqi_domain, range=aqi_range), legend=None),
+                    tooltip=['Hour', 'AQI']
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+            # 6. UV
+            with st.container(border=True):
+                st.markdown("##### ☀️ ดัชนี UV")
+                st.metric("ดัชนี UV สูงสุด", f"{uv_max}")
+                
+                chart = alt.Chart(weather_df).mark_line(point=True, color='orange').encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('UV:Q', title='ดัชนี UV'),
+                    tooltip=['Hour', 'UV']
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+            # 7. ความชื้น
+            with st.container(border=True):
+                st.markdown("##### 💧 ความชื้นสัมพัทธ์")
+                st.metric("ความชื้นเฉลี่ย", f"{hum_avg} %")
+                
+                chart = alt.Chart(weather_df).mark_line(point=True, color='#5DADE2').encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('Humidity:Q', scale=alt.Scale(domain=[0, 100]), title='ความชื้น %'),
+                    tooltip=['Hour', 'Humidity']
+                )
+                st.altair_chart(chart, use_container_width=True)
+
+        # 3. ✅ ย้ายมาไว้ตรงนี้: แสดงปุ่มดาวน์โหลด (เฉพาะ AI Forecast)
+        # โค้ดนี้จะทำงานหลังจากแสดงกราฟข้อมูลเชิงลึกแล้ว
+        if data_source == "AI พยากรณ์":
+            st.divider()
+            st.subheader("ตารางข้อมูลรายชั่วโมง")
+            csv = weather_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="ดาวน์โหลดไฟล์ CSV",
+                data=csv,
+                file_name=f"weather_{selected_district}_{custom_date.date()}.csv",
+                mime="text/csv",
+                type="primary"
+            )
+            st.dataframe(weather_df, use_container_width=True, hide_index=True)
+            st.divider()
+
+st.title("THAILAND DISTRICT WEATHER FORECAST")
+tab1, tab2 = st.tabs(["🌤️ Structured Forecast Metrics","💬 Open-Query Weather Analysis"])
+
+with tab1:
+    weather_forecast_interface()
+
+with tab2:
+    general_qna_interface()
