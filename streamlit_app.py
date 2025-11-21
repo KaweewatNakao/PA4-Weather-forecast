@@ -50,7 +50,7 @@ if "gemini_api_key" not in st.session_state:
 # 2. สร้าง Sidebar สำหรับเปลี่ยน Key ทีหลัง
 with st.sidebar:
     st.header("ตั้งค่า")
-    st.write("หากต้องการใส่หรือเปลี่ยนรหัส Gemini API สามารถกรอกด้านล่าง:")
+    st.caption("หากต้องการใส่หรือเปลี่ยนรหัส Gemini API สามารถกรอกด้านล่าง:")
     
     # ช่องกรอกใน Sidebar (แสดงค่าปัจจุบันถ้ามี)
     sidebar_api_input = st.text_input(
@@ -458,7 +458,7 @@ def weather_forecast_interface():
                 st.info(f"วันที่เลือก: {custom_date.strftime('%d-%m-%Y')}")
 
                 
-                with st.spinner("กำลังวิเคราะห์ข้อมูลสภาพอากาศจาก Gemini..."):
+                with st.spinner("กำลังวิเคราะห์ข้อมูลสภาพอากาศ..."):
                     weather_data = summarize_weather(selected_province, selected_district, custom_date)
 
                 if weather_data:
@@ -594,41 +594,28 @@ def weather_forecast_interface():
                 st.altair_chart(chart, use_container_width=True)
 
             # 5. AQI
+            # 5. AQI (Simplified Code)
             with st.container(border=True):
                 st.markdown("##### 🍃 ดัชนีคุณภาพอากาศ (TH AQI)")
                 st.metric("คุณภาพอากาศอยู่ในระดับ", aqi_mode)
                 
-                # Base Chart
-                base = alt.Chart(weather_df).encode(
-                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)', tickCount=24)),
-                    # ใช้ AQI_Index (ตัวเลข) เพื่อให้เส้นต่อเนื่อง แต่ซ่อนแกน Y หรือจะโชว์ก็ได้
-                    y=alt.Y('AQI_Index:Q', axis=alt.Axis(title='ระดับคุณภาพอากาศ (0=ดีมาก, 4=มีผลฯ)', tickMinStep=1)), 
+                # กราฟแบบ Simple: เส้นสีเทา + จุดสี (ใช้เครื่องหมาย + รวมกราฟง่ายๆ)
+                # 1. สร้างเส้นพื้นหลัง (สีเทา)
+                line = alt.Chart(weather_df).mark_line(color='gray').encode(
+                    x=alt.X('Hour:Q', title='ชั่วโมง (0-23)'),
+                    y=alt.Y('AQI_Index:Q', title='ระดับความรุนแรง')
+                )
+                
+                # 2. สร้างจุดสีตาม AQI
+                points = alt.Chart(weather_df).mark_circle(size=100).encode(
+                    x='Hour:Q', 
+                    y='AQI_Index:Q',
+                    color=alt.Color('AQI:N', scale=alt.Scale(domain=aqi_domain, range=aqi_range), legend=None),
                     tooltip=['Hour', 'AQI']
                 )
 
-                # 1. Line Layer: เส้นเชื่อมสีเทา (เพื่อให้เส้นไม่ขาดเมื่อสีเปลี่ยน)
-                line = base.mark_line(
-                    interpolate='monotone', # เส้นโค้งสวยงาม
-                    color='gray',
-                    opacity=0.5,
-                    strokeWidth=2
-                )
-
-                # 2. Points Layer: จุดสีตามระดับความรุนแรง
-                points = base.mark_circle(size=80, opacity=1).encode(
-                    color=alt.Color(
-                        'AQI:N', 
-                        scale=alt.Scale(domain=aqi_domain, range=aqi_range),
-                        legend=alt.Legend(title="ระดับความรุนแรง", orient='bottom')
-                    )
-                )
-
-                # Combine layers
-                chart = alt.layer(line, points).properties(
-                    height=350
-                ).interactive()
-                
-                st.altair_chart(chart, use_container_width=True)
+                # รวมกันและแสดงผล
+                st.altair_chart(line + points, use_container_width=True)
 
             # 6. UV
             with st.container(border=True):
