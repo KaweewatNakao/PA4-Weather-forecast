@@ -23,21 +23,36 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.sidebar.header("ตั้งค่า API Key")
-gemini_api_key = st.sidebar.text_input("กรอก Gemini API Key ของท่าน", type="password")
+st.title("THAILAND DISTRICT WEATHER FORECAST")
 
-if not gemini_api_key:
-    st.markdown(
-    "<h1 style='text-align:center; font-weight:700;'>FUNDAMENTAL WEATHER FORECAST FOR EACH DISTRICT IN THAILAND </h1>",
-    unsafe_allow_html=True
+# เช็คว่ามี API Key หรือยัง
+if "api_key_input" not in st.session_state:
+    st.session_state.api_key_input = ""
+
+# สร้าง Input Field กลางหน้าจอ
+api_key = st.text_input(
+    "กรุณากรอก Gemini API Key ของท่านเพื่อเริ่มต้นใช้งาน:", 
+    type="password",
+    help="จำเป็นต้องใช้ API Key จาก Google AI Studio เพื่อประมวลผลข้อมูล"
 )
-    st.warning("กรุณากรอก Gemini API Key ในแถบด้านซ้ายก่อนเริ่มใช้งาน")
-    st.stop()
 
+if not api_key:
+    st.info("ยินดีต้อนรับ! กรุณากรอก API Key ด้านบนเพื่อเข้าสู่ระบบพยากรณ์อากาศ")
+    st.stop() # 🛑 หยุดการทำงานส่วนล่างจนกว่าจะกรอก Key
 
+# ถ้ากรอกแล้ว ให้ไปต่อ
+gemini_api_key = api_key
 genai.configure(api_key=gemini_api_key)
-WEATHER_MODEL = genai.GenerativeModel("gemini-2.5-flash-lite")
-QNA_MODEL =  genai.GenerativeModel("gemini-2.5-flash-lite")
+
+# ---------------------------------------------------------------------------
+# 🚀 SETUP MODELS
+# ---------------------------------------------------------------------------
+tools = [
+    {"google_search": {}} 
+]
+# ใช้ Flash ปกติ + Tools
+WEATHER_MODEL = genai.GenerativeModel("gemini-2.5-flash", tools=tools) 
+QNA_MODEL =  genai.GenerativeModel("gemini-2.5-flash", tools=tools)
 
 
 
@@ -659,7 +674,6 @@ def weather_forecast_interface():
             st.dataframe(weather_df, use_container_width=True, hide_index=True)
             st.divider()
 
-st.title("THAILAND DISTRICT WEATHER FORECAST")
 tab1, tab2 = st.tabs(["🌤️ Structured Forecast Metrics","💬 Open-Query Weather Analysis"])
 
 with tab1:
