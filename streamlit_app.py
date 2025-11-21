@@ -101,11 +101,20 @@ def summarize_weather( selected_province, selected_district, custom_date):
     Use \\n for new line in any string value.
 
 
-    Analyze the weather of {selected_district} in {selected_province}, Thailand on {date_str}.
-    Provide the output as a valid JSON object only.
+    You are a precise Weather Data Extractor.
+    
+    **TASK:**
+    1. Use Google Search to find the **ACTUAL forecast** for "{selected_district}, {selected_province}, Thailand" on "{date_str}".
+    2. Prioritize data from reliable sources like "Thai Meteorological Department (TMD)", "AccuWeather", or "The Weather Channel".
+    3. Synthesize the data into the specific JSON format below.
 
-    IMPORTANT: If you cannot find any weather data for the district "{selected_district}" (e.g., misspelled, no data or that district is not in that province),
-    you MUST return this JSON error object exactly but you have to know that only in bangkok, won't use "อำเภอ" but use "เขต" instead.
+    **CRITICAL THAI WEATHER LOGIC (Must Follow):**
+    - **Temperature Curve:** In Thailand, the lowest temperature (`temp_min`) typically occurs just before sunrise (05:00 - 07:00 AM). The highest temperature (`temp_max`) typically occurs in the afternoon (13:00 - 15:00 PM).
+    - **Hourly Temp Logic:** The `hourly_temp` array MUST reflect this curve. It should start warm at 00:00, drop gradually to the lowest point at 06:00, rise sharply to the peak at 14:00, and drop gradually again. DO NOT put the lowest temp at midnight.
+    - **Consistency:** Ensure `temp_max` matches the highest value in `hourly_temp` and `temp_min` matches the lowest.
+
+    **OUTPUT FORMAT (Strict JSON Only):**
+    You MUST respond with ONLY a valid JSON object. Use \\n for new lines in strings.
     {{
       "error_message": "ไม่พบข้อมูลของอำเภอ'{selected_district}' กรุณาตรวจสอบจังหวัดที่ท่านเลือกหรือตัวสะกดของอำเภอนั้นอีกครั้ง"
     }}
@@ -121,11 +130,10 @@ def summarize_weather( selected_province, selected_district, custom_date):
     - ถ้าอำเภอนั้นมีอาณาเขตติดทะเลให้บอกด้วยว่าคลื่นสูงกี่เมตร (ไม่ต้องบอกว่าเพราะติดทะเล) แต่ไม่ต้องคุณภาพอากาศ
     สุดท้ายนี้ ทำให้ประโยคดูเป็นภาษาไทยมากที่สุด แต่ละช่วงถ้าเหมือนก็นำมาเชื่อมกันก็ได้ อย่าใช้คอมม่าเชื่อม ทำให้สละสลวย ใช้คำฟุ่มเฟือยให้พอเหมาะ
 
-    // Item 2.1 (Temp) 
-    อุณหภูมิเป็นสิ่งที่คนจะดูเป็นลำดับแรก กรุณาดึงข้อมูลจากหลายๆแหล่งที่น่าเชื่อถือ โดยเฉพาะเวปไซต์ของกรมอุตุนิยมวิทยาประเทศไทย ให้มันแม่นมากที่สุดในโลก
+    // Item 2.1 (Temp)
     2. "temp_max": (integer)
     3. "temp_min": (integer)
-    4. "hourly_temp": An array of 24 integers (hourly temperature).โดยปกติอุณหภูมิสูงสุดมักอยู่เที่ยงถึงบ่ายสาม และต่ำสุดมักอยู่ช่วง 6 ถึง 7 โมง ไม่ใช่ช่วงเที่ยงคืน 
+    4. "hourly_temp": An array of 24 integers (hourly temperature).(โดยปกติอุณหภุมอสูงสุดมักอยู่เที่ยงถึงบ่ายสาม และต่ำสุดมักอยู่ช่วง 6 ถึง 7 โมง ไม่ใช่ช่วงเที่ยงคืน)
     
     // Item 2.2 (Rain)
     5. "rain_chance_avg": (integer, 0-100, Average for the day)
@@ -136,7 +144,6 @@ def summarize_weather( selected_province, selected_district, custom_date):
     8. "sky_summary_text": Short Thai text summary of sky ทำให้ประโยคดูเป็นภาษาไทยมากที่สุด ไม่ต้องวิเคราะห์ช่วงบ่ายแก่ๆ ข้ามจากช่วงบ่ายไปช่วงเย็นเลย ละก้แต่ละช่วงถ้าเหมือนก็นำมาเชื่อมกันก็ได้ อย่าใช้คอมม่าเชื่อม ทำให้สละสลวย ใช้คำฟุ่มเฟือยให้พอเหมาะ 
     
     // Item 2.4 (Wind)
-    ปกติความเร็วลมจะไม่เหวี่ยงมาก ไม่ใช่ขึ้นสุดลงสุด
     9. "wind_speed_avg": Average wind speed in km/h (integer).
     10. "wind_direction_avg": Average wind direction (e.g., "NE", "SW").
     11. "hourly_wind_speed": An array of 24 integers (wind speed in km/h).
@@ -553,5 +560,4 @@ with tab1:
     weather_forecast_interface()
 
 with tab2:
-
     general_qna_interface()
