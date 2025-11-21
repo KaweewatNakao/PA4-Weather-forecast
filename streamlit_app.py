@@ -521,7 +521,7 @@ def weather_forecast_interface():
             st.write(summary_text)
 
         # 2. แสดงข้อมูลเชิงลึก (กราฟ)
-        st.subheader("ข้อมูลเชิงลึก")
+        st.subheader("ข้อมูลเพิ่มเติม")
         
         # คำนวณค่าสถิติเบื้องต้นจาก DataFrame
         temp_max = weather_df['Temperature'].max()
@@ -582,6 +582,10 @@ def weather_forecast_interface():
             # 4. ท้องฟ้า
             with st.container(border=True):
                 st.markdown("##### 📈 ท้องฟ้ารายชั่วโมง")
+                # คำนวณค่าสภาพท้องฟ้าที่พบบ่อยที่สุด (Mode)
+                sky_mode = weather_df['Sky'].mode()[0] if not weather_df['Sky'].empty else "N/A"
+                st.metric("สภาพท้องฟ้าส่วนใหญ่", sky_mode)
+
                 sky_domain = ["ท้องฟ้าแจ่มใส", "เมฆปนแดด", "เมฆมาก", "มีฝน"]
                 sky_range = ["#3498db", "#f1c40f", "#95a5a6", "#2980b9"]
                 
@@ -597,7 +601,7 @@ def weather_forecast_interface():
             # 5. AQI (Simplified Code)
             with st.container(border=True):
                 st.markdown("##### 🍃 ดัชนีคุณภาพอากาศ (TH AQI)")
-                st.metric("ค่าที่พบบ่อย", aqi_mode)
+                st.metric("ระดับคุณภาพอากาศ", aqi_mode)
                 aqi_domain = ["ดีมาก", "ดี", "ปานกลาง", "เริ่มมีผลกระทบ", "มีผลกระทบ"]
                 aqi_range = ["blue", "green", "yellow", "orange", "red"]
                 chart = alt.Chart(weather_df).mark_line(interpolate='step-after', point=True).encode(
