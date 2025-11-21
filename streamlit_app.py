@@ -73,8 +73,8 @@ with st.sidebar:
 # 3. ฟังก์ชันสร้างกล่องลอย (Dialog) สำหรับครั้งแรก
 @st.dialog("เข้าสู่ระบบ")
 def get_api_key():
-    st.write("กรุณากรอก Gemini API Key เพื่อเริ่มต้นใช้งาน")
-    st.write("(ระบบจะบันทึกไว้จนกว่าท่านจะรีเฟรชหน้าจอ)")
+    st.write("กรุณากรอกรหัส Gemini API เพื่อเริ่มต้นใช้งาน")
+    st.write("(ระบบจะบันทึกรหัสไว้จนกว่าท่านจะรีเฟรชหน้าจอ)")
     api_input = st.text_input("API Key", type="password", key="dialog_api_input")
     if st.button("ยืนยันการใช้งาน", type="primary"):
         st.session_state.gemini_api_key = api_input
