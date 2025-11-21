@@ -593,29 +593,20 @@ def weather_forecast_interface():
                 )
                 st.altair_chart(chart, use_container_width=True)
 
-            # 5. AQI
+                
             # 5. AQI (Simplified Code)
             with st.container(border=True):
-                st.markdown("##### 🍃 ดัชนีคุณภาพอากาศ (TH AQI)")
-                st.metric("คุณภาพอากาศอยู่ในระดับ", aqi_mode)
-                
-                # กราฟแบบ Simple: เส้นสีเทา + จุดสี (ใช้เครื่องหมาย + รวมกราฟง่ายๆ)
-                # 1. สร้างเส้นพื้นหลัง (สีเทา)
-                line = alt.Chart(weather_df).mark_line(color='gray').encode(
-                    x=alt.X('Hour:Q', title='ชั่วโมง (0-23)'),
-                    y=alt.Y('AQI_Index:Q', title='ระดับความรุนแรง')
-                )
-                
-                # 2. สร้างจุดสีตาม AQI
-                points = alt.Chart(weather_df).mark_circle(size=100).encode(
-                    x='Hour:Q', 
-                    y='AQI_Index:Q',
+                st.markdown("ดัชนีคุณภาพอากาศ (TH AQI)")
+                st.metric("ค่าที่พบบ่อย", aqi_mode)
+                aqi_domain = ["ดีมาก", "ดี", "ปานกลาง", "เริ่มมีผลกระทบ", "มีผลกระทบ"]
+                aqi_range = ["blue", "green", "yellow", "orange", "red"]
+                chart = alt.Chart(weather_df).mark_line(interpolate='step-after', point=True).encode(
+                    x=alt.X('Hour:Q', axis=alt.Axis(title='ชั่วโมง (0-23)')),
+                    y=alt.Y('AQI:O', sort=aqi_domain, title=None),
                     color=alt.Color('AQI:N', scale=alt.Scale(domain=aqi_domain, range=aqi_range), legend=None),
                     tooltip=['Hour', 'AQI']
                 )
-
-                # รวมกันและแสดงผล
-                st.altair_chart(line + points, use_container_width=True)
+                st.altair_chart(chart, use_container_width=True)
 
             # 6. UV
             with st.container(border=True):
