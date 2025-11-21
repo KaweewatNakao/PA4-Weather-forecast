@@ -186,14 +186,14 @@ def summarize_weather(selected_province, selected_district, custom_date):
     - **Context:** {season_context}
     - **Search Goal:** Find the **EXACT Forecasted Minimum (Low)** and **Maximum (High)** temperatures for {date_str}.
     - **WARNING:** Do NOT use "Average Temperature" or "Current Temperature" as `temp_min`. You must find the forecasted LOW point (usually early morning).
-    - **Verification:** If you find a Low of 28°C in Winter, it is likely WRONG (it's probably the current temp). Look deeper for the nightly low (e.g., 20-24°C).
+    - **Verification:** If you find a Low of 28°C in Winter, it is likely WRONG (it's probably the current temp). Look deeper for the nightly low.
 
     **TASK:**
-    1. Use Google Search to find the forecast. Search queries to try:
-       - "พยากรณ์อากาศ {selected_district} {selected_province} {date_str} ต่ำสุด สูงสุด"
+    1.THe most important is use Google Search to find the forecast. Search queries to try:
+       - "อุณหภูมิ ต่ำสุด และ สูงสุด {selected_district} ของจังหวัด {selected_province} ในวันที่ {date_str} คือเท่าใด "
        - "Bangkok {selected_district} weather forecast minimum temperature {date_str}"
        - "TMD weather forecast {selected_province}"
-    2. Prioritize data from reliable sources like "Thai Meteorological Department (TMD)", "AccuWeather", or "The Weather Channel".
+    2. Use data from reliable sources like "Thai Meteorological Department (TMD)", "AccuWeather", or "The Weather Channel".
     3. Synthesize the data into the specific JSON format below.
 
     **CRITICAL THAI WEATHER LOGIC (Must Follow):**
