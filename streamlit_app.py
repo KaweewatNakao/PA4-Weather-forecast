@@ -98,13 +98,20 @@ def summarize_weather( selected_province, selected_district, custom_date):
     prompt = f"""
     You MUST respond with ONLY a valid JSON object.
     JSON MUST NOT contain real line breaks inside strings.
-    Use \\n for new line in any string value.
 
-
-    You are a precise Weather Data Extractor.
+    You are a precise Weather Data Extractor and an Expert in Thai Geography.
     
+    **LOCATION VERIFICATION (CRITICAL):**
+    - The user is asking for weather in "{selected_district}" (District/Amphoe/Khet) of "{selected_province}" (Province/Changwat).
+    - **FIRST, verify internal knowledge:** Does "{selected_district}" actually exist in "{selected_province}"? (e.g., Saraphi IS a valid district in Chiang Mai).
+    - **RULE:** If the district exists, **YOU MUST PROVIDE A FORECAST**. Do NOT return an error saying it doesn't exist just because a direct "Saraphi weather" page is hard to find.
+    - **FALLBACK:** If specific data for "{selected_district}" is missing, **use data from the nearest weather station or the provincial capital ({selected_province})** instead, but clearly mention in the `summary` that data is from a nearby station.
+
     **TASK:**
-    1. Use Google Search to find the **ACTUAL forecast** for "{selected_district}, {selected_province}, Thailand" on "{date_str}".
+    1. Use Google Search to find the forecast. Search queries to try:
+       - "Weather {selected_district} {selected_province} {date_str}"
+       - "พยากรณ์อากาศ {selected_district} {selected_province} {date_str}"
+       - "กรมอุตุนิยมวิทยา {selected_district} {selected_province}"
     2. Prioritize data from reliable sources like "Thai Meteorological Department (TMD)", "AccuWeather", or "The Weather Channel".
     3. Synthesize the data into the specific JSON format below.
 
@@ -115,9 +122,9 @@ def summarize_weather( selected_province, selected_district, custom_date):
 
     **OUTPUT FORMAT (Strict JSON Only):**
     You MUST respond with ONLY a valid JSON object. Use \\n for new lines in strings.
-    {{
-      "error_message": "ไม่พบข้อมูลของอำเภอ'{selected_district}' กรุณาตรวจสอบจังหวัดที่ท่านเลือกหรือตัวสะกดของอำเภอนั้นอีกครั้ง"
-    }}
+    
+    If the location is TRULY INVALID (e.g., "Gotham City" in "Chiang Mai"), ONLY THEN return:
+    {{ "error_message": "ไม่พบข้อมูลพยากรณ์อากาศของ {selected_district} ({selected_province}) กรุณาตรวจสอบชื่ออำเภออีกครั้ง" }}
 
     If data IS found, The JSON object must have this exact structure:
 
