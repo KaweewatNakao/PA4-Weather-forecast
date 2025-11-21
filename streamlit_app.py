@@ -23,36 +23,34 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+if "gemini_api_key" not in st.session_state:
+    st.session_state.gemini_api_key = ""
+
+@st.dialog("🔐 เข้าสู่ระบบ")
+def get_api_key():
+    st.write("กรุณากรอก Gemini API Key เพื่อเริ่มต้นใช้งาน")
+    api_input = st.text_input("API Key", type="password", key="api_key_input")
+    if st.button("ยืนยันการใช้งาน"):
+        st.session_state.gemini_api_key = api_input
+        st.rerun()
+
 st.title("THAILAND DISTRICT WEATHER FORECAST")
 
-# เช็คว่ามี API Key หรือยัง
-if "api_key_input" not in st.session_state:
-    st.session_state.api_key_input = ""
+# ถ้ายังไม่มี Key ให้แสดงกล่องลอยและหยุดการทำงานส่วนอื่น
+if not st.session_state.gemini_api_key:
+    st.info("👈 กรุณากรอก API Key ในกล่องที่ปรากฏขึ้นมา")
+    get_api_key() # เรียกใช้ฟังก์ชันกล่องลอย
+    st.stop()     # หยุดโหลดส่วนล่างจนกว่าจะได้ Key
 
-# สร้าง Input Field กลางหน้าจอ
-api_key = st.text_input(
-    "กรุณากรอก Gemini API Key ของท่านเพื่อเริ่มต้นใช้งาน:", 
-    type="password",
-    help="จำเป็นต้องใช้ API Key จาก Google AI Studio เพื่อประมวลผลข้อมูล"
-)
-
-if not api_key:
-    st.info("ยินดีต้อนรับ! กรุณากรอก API Key ด้านบนเพื่อเข้าสู่ระบบพยากรณ์อากาศ")
-    st.stop() # 🛑 หยุดการทำงานส่วนล่างจนกว่าจะกรอก Key
-
-# ถ้ากรอกแล้ว ให้ไปต่อ
-gemini_api_key = api_key
-genai.configure(api_key=gemini_api_key)
+# ตั้งค่า Generative AI
+genai.configure(api_key=st.session_state.gemini_api_key)
 
 # ---------------------------------------------------------------------------
-# 🚀 SETUP MODELS
+# 🚀 UPDATE: ลบ tools ออกเพื่อแก้ ValueError (บรรทัดเก่าที่ error หายไปแล้ว)
 # ---------------------------------------------------------------------------
-tools = [
-    {"google_search": {}} 
-]
-# ใช้ Flash ปกติ + Tools
-WEATHER_MODEL = genai.GenerativeModel("gemini-2.5-flash", tools=tools) 
-QNA_MODEL =  genai.GenerativeModel("gemini-2.5-flash", tools=tools)
+# ใช้ Flash รุ่นปกติ (ลบ tools=tools ออก)
+WEATHER_MODEL = genai.GenerativeModel("gemini-2.5-flash") 
+QNA_MODEL =  genai.GenerativeModel("gemini-2.5-flash")
 
 
 
