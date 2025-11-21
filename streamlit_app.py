@@ -91,14 +91,26 @@ def sanitize_json_string(text: str):
 
 @st.cache_data(ttl="1h", show_spinner=False)
 # --- 2. 💥 ปรับปรุงฟังก์ชัน API (ขอข้อมูล 6 รายการ) ---
-def summarize_weather( selected_province, selected_district, custom_date):
+def summarize_weather(selected_province, selected_district, custom_date):
 
     date_str = custom_date.strftime('%d-%m-%Y')
+    month = custom_date.month
 
+    # ---------------------------------------------------------------------------
+    # 🚀 UPDATE: Logic ฤดูกาลเพื่อดักคอ AI ไม่ให้มั่วเลข
+    # ---------------------------------------------------------------------------
+    season_context = ""
+    if month in [11, 12, 1, 2]:
+        season_context = "This is currently WINTER/COOL SEASON in Thailand. Minimum temperatures (temp_min) in Bangkok/Central region can drop to 19-24°C, and North/Northeast to 10-18°C. **DO NOT hallucinate high minimums like 27-28°C if it is actually cooler.**"
+    elif month in [3, 4, 5]:
+        season_context = "This is SUMMER. Expect high temperatures."
+    else:
+        season_context = "This is RAINY SEASON."
+
+    # ---------------------------------------------------------------------------
+    # 🚀 UPDATE 3: ปรับ Prompt ให้เน้นหาค่า Min/Max จริงๆ ไม่ใช่ค่าเฉลี่ย
+    # ---------------------------------------------------------------------------
     prompt = f"""
-    You MUST respond with ONLY a valid JSON object.
-    JSON MUST NOT contain real line breaks inside strings.
-
     You are a precise Weather Data Extractor and an Expert in Thai Geography.
     
     **LOCATION VERIFICATION (CRITICAL):**
@@ -108,7 +120,7 @@ def summarize_weather( selected_province, selected_district, custom_date):
     - **FALLBACK:** If specific data for "{selected_district}" is missing, **use data from the nearest weather station or the provincial capital ({selected_province})** instead.
 
     **DATA ACCURACY (EXTREMELY IMPORTANT):**
-    - **Context:** {{season_context}}
+    - **Context:** {season_context}
     - **Search Goal:** Find the **EXACT Forecasted Minimum (Low)** and **Maximum (High)** temperatures for {date_str}.
     - **WARNING:** Do NOT use "Average Temperature" or "Current Temperature" as `temp_min`. You must find the forecasted LOW point (usually early morning).
     - **Verification:** If you find a Low of 28°C in Winter, it is likely WRONG (it's probably the current temp). Look deeper for the nightly low (e.g., 20-24°C).
@@ -132,7 +144,7 @@ def summarize_weather( selected_province, selected_district, custom_date):
     If the location is TRULY INVALID (e.g., "Gotham City" in "Chiang Mai"), ONLY THEN return:
     {{ "error_message": "ไม่พบข้อมูลพยากรณ์อากาศของ {selected_district} ({selected_province}) กรุณาตรวจสอบชื่ออำเภออีกครั้ง" }}
 
-    If data IS found, The JSON object must have this exact structure:
+    Otherwise, return this structure:
 
     The JSON object must have this exact structure:
     1. "summary": Output must be one sentence that have this detail: 
