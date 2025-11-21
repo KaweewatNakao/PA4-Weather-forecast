@@ -23,32 +23,82 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+st.set_page_config(page_title="Weather Intelligence Portal", layout="wide")
+
+# 🔥 เพิ่มส่วนปรับแต่งฟอนต์ภาษาไทย (CSS Injection)
+st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap');
+        
+        html, body, [class*="css"]  {
+            font-family: 'Prompt', sans-serif !important;
+        }
+        h1, h2, h3 {
+            font-weight: 600 !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 🚀 SYSTEM: ระบบจัดการ API Key (Dialog + Sidebar)
+# ==========================================
+
+# 1. สร้าง Session State ถ้ายังไม่มี
 if "gemini_api_key" not in st.session_state:
     st.session_state.gemini_api_key = ""
 
+# 2. สร้าง Sidebar สำหรับเปลี่ยน Key ทีหลัง
+with st.sidebar:
+    st.header("⚙️ ตั้งค่า")
+    st.write("หากต้องการเปลี่ยนรหัส API สามารถกรอกใหม่ได้ด้านล่าง:")
+    
+    # ช่องกรอกใน Sidebar (แสดงค่าปัจจุบันถ้ามี)
+    sidebar_api_input = st.text_input(
+        "Gemini API Key", 
+        type="password", 
+        value=st.session_state.gemini_api_key,
+        key="sidebar_api_key",
+        help="กรอกเพื่ออัปเดต Key ใหม่"
+    )
+    
+    # ถ้ามีการแก้ไขใน Sidebar ให้บันทึกทันที
+    if sidebar_api_input and sidebar_api_input != st.session_state.gemini_api_key:
+        st.session_state.gemini_api_key = sidebar_api_input
+        st.toast("✅ อัปเดต API Key เรียบร้อยแล้ว!", icon="🎉")
+        st.rerun() # รีโหลดหน้าเว็บเพื่อใช้ Key ใหม่
+
+    st.divider()
+    st.caption("Weather Intelligence Portal v1.0")
+
+# 3. ฟังก์ชันสร้างกล่องลอย (Dialog) สำหรับครั้งแรก
 @st.dialog("🔐 เข้าสู่ระบบ")
 def get_api_key():
     st.write("กรุณากรอก Gemini API Key เพื่อเริ่มต้นใช้งาน")
-    api_input = st.text_input("API Key", type="password", key="api_key_input")
-    if st.button("ยืนยันการใช้งาน"):
+    st.write("(ระบบจะบันทึกไว้จนกว่าท่านจะรีเฟรชหน้าจอ)")
+    api_input = st.text_input("API Key", type="password", key="dialog_api_input")
+    if st.button("ยืนยันการใช้งาน", type="primary"):
         st.session_state.gemini_api_key = api_input
         st.rerun()
 
+# 4. ตรวจสอบสถานะ Key ก่อนเข้าแอป
 st.title("THAILAND DISTRICT WEATHER FORECAST")
 
-# ถ้ายังไม่มี Key ให้แสดงกล่องลอยและหยุดการทำงานส่วนอื่น
 if not st.session_state.gemini_api_key:
-    st.info("👈 กรุณากรอก API Key ในกล่องที่ปรากฏขึ้นมา")
-    get_api_key() # เรียกใช้ฟังก์ชันกล่องลอย
-    st.stop()     # หยุดโหลดส่วนล่างจนกว่าจะได้ Key
+    st.info("👈 กรุณากรอก API Key เพื่อเริ่มใช้งาน (กล่อง Login จะปรากฏขึ้น)")
+    get_api_key() # เรียก Dialog
+    st.stop()     # หยุดโหลดส่วนล่าง
 
-# ตั้งค่า Generative AI
-genai.configure(api_key=st.session_state.gemini_api_key)
+# ตั้งค่า Generative AI ด้วย Key ที่ได้มา
+try:
+    genai.configure(api_key=st.session_state.gemini_api_key)
+except Exception as e:
+    st.error(f"API Key ไม่ถูกต้อง: {e}")
+    st.stop()
 
 # ---------------------------------------------------------------------------
-# 🚀 UPDATE: ลบ tools ออกเพื่อแก้ ValueError (บรรทัดเก่าที่ error หายไปแล้ว)
+# 🚀 SETUP MODELS
 # ---------------------------------------------------------------------------
-# ใช้ Flash รุ่นปกติ (ลบ tools=tools ออก)
+# ใช้ Flash รุ่นปกติ
 WEATHER_MODEL = genai.GenerativeModel("gemini-2.5-flash") 
 QNA_MODEL =  genai.GenerativeModel("gemini-2.5-flash")
 
