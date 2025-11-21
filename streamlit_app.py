@@ -104,20 +104,26 @@ def summarize_weather( selected_province, selected_district, custom_date):
     **LOCATION VERIFICATION (CRITICAL):**
     - The user is asking for weather in "{selected_district}" (District/Amphoe/Khet) of "{selected_province}" (Province/Changwat).
     - **FIRST, verify internal knowledge:** Does "{selected_district}" actually exist in "{selected_province}"? (e.g., Saraphi IS a valid district in Chiang Mai).
-    - **RULE:** If the district exists, **YOU MUST PROVIDE A FORECAST**. Do NOT return an error saying it doesn't exist just because a direct "Saraphi weather" page is hard to find.
-    - **FALLBACK:** If specific data for "{selected_district}" is missing, **use data from the nearest weather station or the provincial capital ({selected_province})** instead, but clearly mention in the `summary` that data is from a nearby station.
+    - **RULE:** If the district exists, **YOU MUST PROVIDE A FORECAST**. Do NOT return an error saying it doesn't exist.
+    - **FALLBACK:** If specific data for "{selected_district}" is missing, **use data from the nearest weather station or the provincial capital ({selected_province})** instead.
+
+    **DATA ACCURACY (EXTREMELY IMPORTANT):**
+    - **Context:** {{season_context}}
+    - **Search Goal:** Find the **EXACT Forecasted Minimum (Low)** and **Maximum (High)** temperatures for {date_str}.
+    - **WARNING:** Do NOT use "Average Temperature" or "Current Temperature" as `temp_min`. You must find the forecasted LOW point (usually early morning).
+    - **Verification:** If you find a Low of 28°C in Winter, it is likely WRONG (it's probably the current temp). Look deeper for the nightly low (e.g., 20-24°C).
 
     **TASK:**
     1. Use Google Search to find the forecast. Search queries to try:
-       - "Weather {selected_district} {selected_province} {date_str}"
-       - "พยากรณ์อากาศ {selected_district} {selected_province} {date_str}"
-       - "กรมอุตุนิยมวิทยา {selected_district} {selected_province}"
+       - "พยากรณ์อากาศ {selected_district} {selected_province} {date_str} ต่ำสุด สูงสุด"
+       - "Bangkok {selected_district} weather forecast minimum temperature {date_str}"
+       - "TMD weather forecast {selected_province}"
     2. Prioritize data from reliable sources like "Thai Meteorological Department (TMD)", "AccuWeather", or "The Weather Channel".
     3. Synthesize the data into the specific JSON format below.
 
     **CRITICAL THAI WEATHER LOGIC (Must Follow):**
-    - **Temperature Curve:** In Thailand, the lowest temperature (`temp_min`) typically occurs just before sunrise (05:00 - 07:00 AM). The highest temperature (`temp_max`) typically occurs in the afternoon (13:00 - 15:00 PM).
-    - **Hourly Temp Logic:** The `hourly_temp` array MUST reflect this curve. It should start warm at 00:00, drop gradually to the lowest point at 06:00, rise sharply to the peak at 14:00, and drop gradually again. DO NOT put the lowest temp at midnight.
+    - **Temperature Curve:** Lowest temp (`temp_min`) is at 05:00-07:00 AM. Highest (`temp_max`) is at 13:00-15:00 PM.
+    - **Hourly Temp Logic:** 00:00 starts warm, drops to `temp_min` at 06:00, rises to `temp_max` at 14:00.
     - **Consistency:** Ensure `temp_max` matches the highest value in `hourly_temp` and `temp_min` matches the lowest.
 
     **OUTPUT FORMAT (Strict JSON Only):**
@@ -172,26 +178,26 @@ def summarize_weather( selected_province, selected_district, custom_date):
     
     Example (Do not use this exact data, find new data):
     {{
-      "summary": "อุณหภูมิ 26-34°C, ท้องฟ้าแจ่มใส, คุณภาพอากาศดีมาก, คลื่นสูง 1 เมตร",
-      "temp_max": 34,
-      "temp_min": 26,
-      "hourly_temp": [24 numbers],
-      "rain_chance_avg": 40,
-      "hourly_rain_chance": [24numbers],
-      "hourly_sky_conditions": ["ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "เมฆปนแดด", "เมฆปนแดด", "เมฆปนแดด", "เมฆมาก", "เมฆมาก", "เมฆมาก", "มีฝน", "มีฝน", "เมฆมาก", "เมฆปนแดด", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส", "ท้องฟ้าแจ่มใส"],
-      "sky_summary_text": "06:00–09:00 → ท้องฟ้าแจ่มใส\n09:00–12:00 → เมฆปนแดด\n12:00–15:00 → เมฆมาก\n15:00–18:00 → มีฝน",
-      "wind_speed_avg": 10,
-      "wind_direction_avg": "NE",
-      "hourly_wind_speed": [24 numbers],
-      "hourly_wind_direction": ["N", "N", "NNE", "NE", "NE", "NE", "ENE", "E", "E", "E", "ESE", "SE", "SE", "S", "S", "SW", "W", "W", "NW", "NW", "N", "N", "N", "N"],
-      "aqi_level_avg": "ปานกลาง",
-      "hourly_aqi_level": ["ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ปานกลาง", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี", "ดี"],
-      "hourly_aqi_color": ["green", "green", "green", "green", "green", "green", "green", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "yellow", "green", "green", "green", "green", "green", "green", "green", "green", "green"],
-      "uv_index": 9,
-      "uv_description": "สูงมาก",
-      "hourly_uv_index": [24 numbers] แต่ละชั่วโมงไม่ควรโดดไปโดดมา เพราะค่า UV จะสูงตอนเที่ยงๆ ละจะลดลงตามความเข็มแสงอาทิตย์
-      "humidity_avg": 75,
-      "hourly_humidity": [24 numbers]
+      "summary": "Summary sentence covering Min-Max Temp, Sky condition, AQI. Note if fallback data is used. Concise, Thai language.",
+      "temp_max": (integer),
+      "temp_min": (integer),
+      "hourly_temp": [Array of 24 integers 00:00-23:00 following Thai logic],
+      "rain_chance_avg": (integer 0-100),
+      "hourly_rain_chance": [Array of 24 integers 0-100],
+      "hourly_sky_conditions": [Array of 24 strings: "มีฝน", "เมฆมาก", "เมฆปนแดด", "ท้องฟ้าแจ่มใส"],
+      "sky_summary_text": "Short Thai summary.",
+      "wind_speed_avg": (integer),
+      "wind_direction_avg": (string e.g. "NE"),
+      "hourly_wind_speed": [Array of 24 integers],
+      "hourly_wind_direction": [Array of 24 strings],
+      "aqi_level_avg": (string e.g. "ปานกลาง"),
+      "hourly_aqi_level": [Array of 24 strings],
+      "hourly_aqi_color": [Array of 24 strings e.g. "green", "yellow", "orange", "red"],
+      "uv_index": (integer),
+      "uv_description": (string),
+      "hourly_uv_index": [Array of 24 integers],
+      "humidity_avg": (integer),
+      "hourly_humidity": [Array of 24 integers]
     }}
     """
 
